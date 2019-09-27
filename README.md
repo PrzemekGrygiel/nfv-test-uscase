@@ -66,12 +66,15 @@ git https://github.com/PrzemekGrygiel/nfv-test-uscase.git
 cd nfv-test-uscase
 ```
 There are two scenarios of the use case: 
-DPDK with IPv4 in the directory: /dpdk-ipv4
-DPDK with IPv4 and IPv6 in the directory:dpdk-dualstack
 
-In the directory /licenses there are files for vSRX and vMX licensces, please provide yours licenses there.
+DPDK with IPv4 in the directory: **/dpdk-ipv4**
 
-Before run the heat creation please provide informations according to yours enviroment in vnf-test.env. Please take into account that "mgmt_net" need to be created before run and FQ Name provided as in the example.
+DPDK with IPv4 and IPv6 in the directory: **dpdk-dualstack**
+
+In the directory **/licenses** there are files for vSRX and vMX licensces, please provide yours licenses there.
+
+Before run the heat creation please provide informations according to yours enviroment in vnf-test.env. 
+Please take into account that "mgmt_net" need to be created before run and FQ Name provided as in the example.
 Once all data provided, run the stack creation.
 
 ```
