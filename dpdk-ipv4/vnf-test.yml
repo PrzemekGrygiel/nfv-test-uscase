@@ -1,0 +1,742 @@
+heat_template_version: queens
+description: Heat template to bring up the vMX which is composed of vRE (routing engine) and vPFE (forwarding engine) VMs
+
+parameters:
+  ipam_int_name:
+    type: string
+  ipam_prv_net_name:
+    type: string
+  ipam_cloud_net_name:
+    type: string
+  ipam_public_net_name:
+    type: string
+  vcp_name:
+    type: string
+    description: VM Name for the vRE name
+  vfp_name:
+    type: string
+    description: VM Name for the vPFE name
+  vcp_img:
+    type: string
+    description: Image stored in glance to support the vRE VM
+  vfp_img:
+    type: string
+    description: Image stored in glance to support the vPFE VM
+  vsrx_img:
+    type: string
+    description: Image stored in glance to support the vSRX VM
+  vcp_flavor:
+    type: string
+    description: Flavor created to support the vRE VM
+  vfp_flavor:
+    type: string
+    description: Flavor created to support the vPFE VM
+  vsrx_flavor:
+    type: string
+    description: Flavor created to support the vSRX VM
+  mgmt_net:
+    type: string
+    description: Public network name or ID
+  vmx_fxp0_ip:
+    type: string
+    description: xxx
+  vsrx1_fxp0_ip:
+    type: string
+    description: xxx
+  vsrx2_fxp0_ip:
+    type: string
+    description: xxx
+  int_name:
+    type: string
+    description: xxx
+  prv_net_name:
+    type: string
+    description: xxx
+  prv_net_prefix:
+    type: string
+    description: xxx
+  prv_net_mask:
+    type: string
+    description: xxx
+  prv_net_rt:
+    type: comma_delimited_list 
+    default: ''
+    description: xxx
+  cloud_net_name:
+    type: string
+    description: xxx
+  cloud_net_prefix:
+    type: string
+    description: xxx
+  cloud_net_mask:
+    type: string
+    description: xxx
+  cloud_net_rt:
+    type: comma_delimited_list
+    description: xxx
+  public_net_name:
+    type: string
+    description: xxx
+  public_net_prefix:
+    type: string
+    description: xxx
+  public_net_mask:
+    type: string
+    description: xxx
+  public_net_rt:
+    type: comma_delimited_list
+    description: xxx
+  azvmx:
+    type: string
+    description: xxx
+  azvsrx1:
+    type: string
+    description: xxx
+  azvsrx2:
+    type: string
+    description: xxx
+  bgpaas_asn:
+    type: string
+    description: xxx
+  tenant:
+    type: string
+    description: Tenant name
+    default: 'admin'
+  domain:
+    type: string
+    description: Domain name
+    default: 'default-domain'
+
+  service_policy_match_direction:
+    type: string
+    description: Match directions for the service policy
+    default: '<>'
+  service_policy_match_protocol:
+    type: string
+    default: 'any'
+  service_policy_match_src_port_start:
+    type: string
+    default: -1
+  service_policy_match_src_port_end:
+    type: string
+    default: -1
+  service_policy_match_dst_port_start:
+    type: string
+    default: -1
+  service_policy_match_dst_port_end:
+    type: string
+    default: -1
+  service_policy_action:
+    type: string
+    default: 'pass'
+
+resources:
+#################
+# INTERNAL NETWORK
+  ipam_int:
+    type: OS::ContrailV2::NetworkIpam
+    properties:
+      name: { get_param: ipam_int_name }
+  int_vn:
+    type: OS::ContrailV2::VirtualNetwork
+    properties:
+      name: { get_param: int_name }
+      network_ipam_refs: [{ get_resource: ipam_int }]
+      virtual_network_properties:
+        {
+          virtual_network_properties_forwarding_mode: 'l2',
+        }
+      flood_unknown_unicast: true
+      network_ipam_refs_data:
+        [{
+          network_ipam_refs_data_ipam_subnets:
+            [{
+              network_ipam_refs_data_ipam_subnets_subnet:
+                {
+                  network_ipam_refs_data_ipam_subnets_subnet_ip_prefix: '128.0.0.0',
+                  network_ipam_refs_data_ipam_subnets_subnet_ip_prefix_len: '16',
+                },
+                network_ipam_refs_data_ipam_subnets_default_gateway: '0.0.0.0',
+                network_ipam_refs_data_ipam_subnets_enable_dhcp: 'false',
+                network_ipam_refs_data_ipam_subnets_addr_from_start: 'true',
+         }]
+     }]
+
+  vmi_vcp_int:
+    type: OS::ContrailV2::VirtualMachineInterface
+    properties:
+      name: { get_param: vcp_name }
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ int_vn, fq_name ] } ] }]
+
+  vcp_int:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [ vmi_vcp_int]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vcp_int }]
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ int_vn, fq_name ] } ] }]
+      instance_ip_address: '128.0.0.1'
+
+  vmi_vfp_int:
+    type: OS::ContrailV2::VirtualMachineInterface
+    properties:
+      name: { get_param: vfp_name }
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ int_vn, fq_name ] } ] }]
+
+  vfp_int:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [ vmi_vfp_int]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vfp_int }]
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ int_vn, fq_name ] } ] }]
+      instance_ip_address: '128.0.0.16'
+
+##########
+#MGMT NETWORK PORTS
+
+  vmi_vcp_fxp0:
+    type: OS::ContrailV2::VirtualMachineInterface
+    properties:
+      name: { get_param: vcp_name }
+      virtual_network_refs: [{ get_param: mgmt_net }]
+
+  vcp_fxp0:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [ vmi_vcp_fxp0]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vcp_fxp0 }]
+      virtual_network_refs: [{ get_param: mgmt_net }]
+      instance_ip_address: { get_param: vmx_fxp0_ip }
+
+  vmi_vfp_ext:
+    type: OS::ContrailV2::VirtualMachineInterface
+    properties:
+      name: { get_param: vfp_name }
+      virtual_network_refs: [{ get_param: mgmt_net }]
+
+  vfp_ext:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [ vmi_vfp_int]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vfp_ext }]
+      virtual_network_refs: [{ get_param: mgmt_net }]
+
+  vmi_vsrx1_fxp0:
+     type: OS::ContrailV2::VirtualMachineInterface
+     properties:
+       name: 'vsrx1_fxp0_int'
+       virtual_network_refs: [{ get_param: mgmt_net }]
+
+  vsrx1_fxp0:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [vmi_vsrx1_fxp0]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vsrx1_fxp0 }]
+      virtual_network_refs: [{ get_param: mgmt_net }]
+      instance_ip_address: { get_param: vsrx1_fxp0_ip }
+     
+  vmi_vsrx2_fxp0:
+    type: OS::ContrailV2::VirtualMachineInterface
+    properties:
+      name: 'vsrx2_fxp0_int'
+      virtual_network_refs: [{ get_param: mgmt_net }]
+
+  vsrx2_fxp0:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [vmi_vsrx2_fxp0]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vsrx2_fxp0 }]
+      virtual_network_refs: [{ get_param: mgmt_net }]
+      instance_ip_address: { get_param: vsrx2_fxp0_ip }
+
+##########
+# prv_net
+  ipam_prv_net:
+    type: OS::ContrailV2::NetworkIpam
+    properties:
+      name: { get_param: ipam_prv_net_name }
+  prv_net_vn:
+    type: OS::ContrailV2::VirtualNetwork
+    properties:
+      name: { get_param: prv_net_name }
+      route_target_list:
+        {
+          route_target_list_route_target:  { get_param: prv_net_rt },
+        }
+      network_ipam_refs: [{ get_resource: ipam_prv_net }]
+      network_ipam_refs_data:
+        [{
+          network_ipam_refs_data_ipam_subnets:
+            [{
+              network_ipam_refs_data_ipam_subnets_subnet:
+                {
+                  network_ipam_refs_data_ipam_subnets_subnet_ip_prefix: { get_param: prv_net_prefix },
+                  network_ipam_refs_data_ipam_subnets_subnet_ip_prefix_len: { get_param: prv_net_mask },
+                },
+                network_ipam_refs_data_ipam_subnets_enable_dhcp: 'true',
+                network_ipam_refs_data_ipam_subnets_addr_from_start: 'true',
+         }]
+     }]
+
+  vmi_vfp_prv_net:
+    type: OS::ContrailV2::VirtualMachineInterface
+    properties:
+      name: { get_param: vcp_name }
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ prv_net_vn, fq_name ] } ] }]
+
+  vfp_prv_net:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [ vmi_vfp_prv_net]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vfp_prv_net }]
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ prv_net_vn, fq_name ] } ] }]
+
+##########
+# cloud_net
+  ipam_cloud_net:
+    type: OS::ContrailV2::NetworkIpam
+    properties:
+      name: { get_param: ipam_cloud_net_name }
+  cloud_net_vn:
+    type: OS::ContrailV2::VirtualNetwork
+    depends_on: [ServicePolicy]
+    properties:
+      name: { get_param: cloud_net_name }
+      route_target_list:
+        {
+          route_target_list_route_target:  { get_param: cloud_net_rt },
+        }
+      network_policy_refs: [ list_join: [':', { get_attr: [ ServicePolicy, fq_name ] } ] ]
+      network_policy_refs_data:
+        [{
+          network_policy_refs_data_sequence:
+            {
+              network_policy_refs_data_sequence_major: 0,
+              network_policy_refs_data_sequence_minor: 0,
+            },
+        }]
+      network_ipam_refs: [{ get_resource: ipam_cloud_net }]
+      network_ipam_refs_data:
+        [{
+          network_ipam_refs_data_ipam_subnets:
+            [{
+              network_ipam_refs_data_ipam_subnets_subnet:
+                {
+                  network_ipam_refs_data_ipam_subnets_subnet_ip_prefix: { get_param: cloud_net_prefix },
+                  network_ipam_refs_data_ipam_subnets_subnet_ip_prefix_len: { get_param: cloud_net_mask },
+                },
+                network_ipam_refs_data_ipam_subnets_addr_from_start: 'true',
+                network_ipam_refs_data_ipam_subnets_enable_dhcp: 'true',
+         }]
+     }]
+
+  vmi_vfp_cloud_net:
+    type: OS::ContrailV2::VirtualMachineInterface
+    properties:
+      name: { get_param: vcp_name }
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ cloud_net_vn, fq_name ] } ] }]
+      interface_route_table_refs: [{ list_join: [':', { get_attr: [ MxCloudNetInterfaceRoute, fq_name ] } ] }] 
+
+  vfp_cloud_net:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [ vmi_vfp_cloud_net]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vfp_cloud_net }]
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ cloud_net_vn, fq_name ] } ] }]
+
+  vmi_vsrx1_cloud_net:
+    type: OS::ContrailV2::VirtualMachineInterface
+    properties:
+      name: 'vsrx1_cloud_net_int'
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ cloud_net_vn, fq_name ] } ] }]
+      port_tuple_refs: [{ get_resource: PortTuple }]
+      virtual_machine_interface_properties:
+        virtual_machine_interface_properties_service_interface_type: 'left'
+ 
+  vsrx1_cloud_net:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [vmi_vsrx1_cloud_net]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vsrx1_cloud_net }]
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ cloud_net_vn, fq_name ] } ] }]
+    
+  vmi_vsrx2_cloud_net:
+    type: OS::ContrailV2::VirtualMachineInterface
+    properties:
+      name: 'vsrx2_cloud_net_int'
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ cloud_net_vn, fq_name ] } ] }]
+      port_tuple_refs: [{ get_resource: PortTuple }]
+      virtual_machine_interface_properties:
+        virtual_machine_interface_properties_service_interface_type: 'left'
+
+  vsrx2_cloud_net:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [vmi_vsrx2_cloud_net]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vsrx2_cloud_net }]
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ cloud_net_vn, fq_name ] } ] }]
+
+##########
+# public_net
+  ipam_public_net:
+    type: OS::ContrailV2::NetworkIpam
+    properties:
+      name: { get_param: ipam_public_net_name }
+  public_net_vn:
+    type: OS::ContrailV2::VirtualNetwork
+    depends_on: [ServicePolicy]
+    properties:
+      name: { get_param: public_net_name }
+      route_target_list:
+        {
+          route_target_list_route_target:  { get_param: public_net_rt },
+        }
+      network_policy_refs: [ list_join: [':', { get_attr: [ ServicePolicy, fq_name ] } ] ]
+      network_policy_refs_data:
+        [{
+          network_policy_refs_data_sequence:
+            {
+              network_policy_refs_data_sequence_major: 0,
+              network_policy_refs_data_sequence_minor: 0,
+            },
+        }]
+      network_ipam_refs: [{ get_resource: ipam_public_net }]
+      network_ipam_refs_data:
+        [{
+          network_ipam_refs_data_ipam_subnets:
+            [{
+              network_ipam_refs_data_ipam_subnets_subnet:
+                {
+                  network_ipam_refs_data_ipam_subnets_subnet_ip_prefix: { get_param: public_net_prefix },
+                  network_ipam_refs_data_ipam_subnets_subnet_ip_prefix_len: { get_param: public_net_mask },
+                },
+                #network_ipam_refs_data_ipam_subnets_default_gateway: '0.0.0.0',
+                network_ipam_refs_data_ipam_subnets_enable_dhcp: 'true',
+                network_ipam_refs_data_ipam_subnets_addr_from_start: 'true',
+         }]
+     }]
+  vmi_vsrx1_public_net:
+    type: OS::ContrailV2::VirtualMachineInterface
+    properties:
+      name: 'vsrx1_public_net_int'
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ public_net_vn, fq_name ] } ] }]
+      port_tuple_refs: [{ get_resource: PortTuple }]
+      virtual_machine_interface_properties:
+        virtual_machine_interface_properties_service_interface_type: 'right'
+
+  vsrx1_public_net:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [vmi_vsrx1_public_net]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vsrx1_public_net }]
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ public_net_vn, fq_name ] } ] }]
+
+  vmi_vsrx2_public_net:
+    type: OS::ContrailV2::VirtualMachineInterface
+    properties:
+      name: 'vsrx2_public_net_int'
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ public_net_vn, fq_name ] } ] }]
+      port_tuple_refs: [{ get_resource: PortTuple }]
+      virtual_machine_interface_properties:
+        virtual_machine_interface_properties_service_interface_type: 'right'
+
+  vsrx2_public_net:
+    type: OS::ContrailV2::InstanceIp
+    depends_on: [vmi_vsrx2_public_net]
+    properties:
+      virtual_machine_interface_refs: [{ get_resource: vmi_vsrx2_public_net }]
+      virtual_network_refs: [{ list_join: [':', { get_attr: [ public_net_vn, fq_name ] } ] }]
+
+##########
+#VMX VCP
+  vcp:
+    type: OS::Nova::Server
+    depends_on: [vcp_fxp0, vcp_int]
+    properties:
+      name: { get_param: vcp_name }
+      image: { get_param:  vcp_img }
+      flavor: { get_param:  vcp_flavor }
+      availability_zone: { get_param: azvmx}
+      networks:
+      - port: { get_resource: vmi_vcp_fxp0 }
+      - port: { get_resource: vmi_vcp_int }
+      config_drive: 'true'
+      metadata:
+        hw.pci.link.0x60.irq: 10
+        vm_chassis_i2cid: "161"
+        vm_i2cid: '0xBAB'
+        vm_instance: 0
+        vm_is_virtual: 1
+        vm_ore_present: 0
+        vm_retype: RE-VMX
+        vmtype: 0
+        console: vidconsole
+      personality: {
+        /var/db/cumulus/baseline_config.template: {get_file: vmx-config.txt },
+        /config/license/JUNOS773156.lic: { get_file: ../licenses/vmx-license.txt }
+        }
+  vfp:
+    type: OS::Nova::Server
+    depends_on: [vfp_ext, vfp_int, vfp_prv_net, vfp_cloud_net]
+    properties:
+      name: { get_param: vfp_name }
+      image: { get_param:  vfp_img }
+      flavor: { get_param:  vfp_flavor }
+      availability_zone: { get_param: azvmx}
+      networks:
+      - port: { get_resource: vmi_vfp_ext }
+      - port: { get_resource: vmi_vfp_int }
+      - port: { get_resource: vmi_vfp_prv_net}
+      - port: { get_resource: vmi_vfp_cloud_net}
+
+
+#######
+#MX static route
+  MxCloudNetInterfaceRoute:
+    type: OS::ContrailV2::InterfaceRouteTable
+    properties:
+      name: { list_join: ['_', [ { get_param: "OS::stack_name" }, "mx_static_route" ]]}
+      interface_route_table_routes:
+        interface_route_table_routes_route:
+          - interface_route_table_routes_route_prefix: {list_join: ['/', [ {get_param: prv_net_prefix}, {get_param: prv_net_mask}]]}
+########
+# HC
+  ping_health_check:
+   type: OS::ContrailV2::ServiceHealthCheck
+   properties:
+     name: ping_check
+     service_instance_refs: [ list_join: [':', { get_attr: [  ServiceInstance, fq_name ] } ] ]
+     service_instance_refs_data:
+       [{
+          service_instance_refs_data_interface_type: 'left'  
+       }]
+     service_health_check_properties:
+       {
+         service_health_check_properties_enabled: true,
+         service_health_check_properties_health_check_type: link-local,
+         service_health_check_properties_monitor_type: PING,
+         service_health_check_properties_timeout: 5,
+         service_health_check_properties_max_retries: 3,
+         service_health_check_properties_url_path: local-ip
+       }
+
+#######
+#BGPaaS
+  bfd_health_check:
+   type: OS::ContrailV2::ServiceHealthCheck
+   properties:
+     name: bgpaas_bfd_check
+     service_health_check_properties:
+       {
+         service_health_check_properties_enabled: true,
+         service_health_check_properties_health_check_type: link-local,
+         service_health_check_properties_monitor_type: BFD,
+         service_health_check_properties_delay: 1000,
+         service_health_check_properties_timeout: 1000,
+         service_health_check_properties_max_retries: 3,
+         service_health_check_properties_url_path: local-ip 
+       }
+
+  bgpaas_1:
+   type: OS::ContrailV2::BgpAsAService
+   depends_on: [vfp, bfd_health_check]
+   properties:
+      name: bgpaas-1
+      virtual_machine_interface_refs:  [{ get_resource: vmi_vfp_prv_net }] 
+      autonomous_system: { get_param: bgpaas_asn }
+     # service_health_check_refs: [{ get_resource: bfd_health_check }]
+      bgpaas_session_attributes:
+        {
+          bgpaas_session_attributes_address_families:
+            {
+              bgpaas_session_attributes_address_families_family: ['inet','inet6'],
+             },
+        bgpaas_session_attributes_family_attributes:
+           [{
+             bgpaas_session_attributes_family_attributes_address_family: inet,
+           }]
+        }
+
+##########
+#vsrx1
+  vsrx1:
+    type: OS::Nova::Server
+    depends_on: [vsrx1_fxp0, vsrx1_cloud_net, vsrx1_public_net]
+    properties:
+      name: 'vsrx1'
+      image: { get_param:  vsrx_img }
+      flavor: { get_param:  vsrx_flavor }
+      availability_zone: { get_param: azvsrx1}
+      networks:
+      - port: { get_resource: vmi_vsrx1_fxp0 }
+      - port: { get_resource: vmi_vsrx1_cloud_net}
+      - port: { get_resource: vmi_vsrx1_public_net}
+      user_data_format: RAW
+      config_drive: true
+      personality: { /config/junos-config/configuration.txt: { get_file: vsrx1-config.txt },/config/junos-license/vsrx.lic: { get_file: ../licenses/vsrx-license.txt } }      
+
+##########
+#vsrx2
+  vsrx2:
+    type: OS::Nova::Server
+    depends_on: [vsrx1_fxp0, vsrx1_cloud_net, vsrx1_public_net]
+    properties:
+      name: 'vsrx2'
+      image: { get_param:  vsrx_img }
+      flavor: { get_param:  vsrx_flavor }
+      availability_zone: { get_param: azvsrx2}
+      networks:
+      - port: { get_resource: vmi_vsrx2_fxp0 }
+      - port: { get_resource: vmi_vsrx2_cloud_net}
+      - port: { get_resource: vmi_vsrx2_public_net}
+      user_data_format: RAW
+      config_drive: true
+      personality: { /config/junos-config/configuration.txt: { get_file: vsrx2-config.txt },/config/junos-license/vsrx.lic: { get_file: ../licenses/vsrx-license.txt } }
+##########
+#TestVM1
+  TestVM1:
+    type: OS::Nova::Server
+    depends_on: [prv_net_vn]
+    properties:
+      name: 'TestVM1'
+      image: 'cirros'
+      flavor: { get_param:  vcp_flavor } 
+      networks:
+        - network: { get_resource: prv_net_vn }
+
+  TestVM2:
+    type: OS::Nova::Server
+    depends_on: [cloud_net_vn]
+    properties:
+      name: 'TestVM2'
+      image: 'cirros'
+      flavor: { get_param:  vcp_flavor }
+      networks:
+        - network: { get_resource: public_net_vn }
+
+#########
+# Service Chaining
+  ServiceTemplate:
+    type: OS::ContrailV2::ServiceTemplate
+    properties:
+      name:
+        str_replace:
+          template: "%ident%_service_template"
+          params:
+            '%ident%': {get_param: 'OS::stack_name'}
+      service_template_properties:
+        {
+          service_template_properties_version: '2',
+          service_template_properties_service_mode: 'in-network',
+          service_template_properties_service_type: 'firewall',
+          service_template_properties_interface_type:
+            [
+              {
+              service_template_properties_interface_type_service_interface_type: 'left',
+              },
+              {
+              service_template_properties_interface_type_service_interface_type: 'right',
+              }
+            ],
+          service_template_properties_ordered_interfaces: 'true',
+          service_template_properties_service_virtualization_type: 'virtual-machine',
+        }
+      domain: { get_param: domain }
+
+
+  ServiceInstance:
+    type: OS::ContrailV2::ServiceInstance
+    depends_on: [ ServiceTemplate ]
+    properties:
+      name:
+        str_replace:
+          template: "%ident%_service_instance"
+          params:
+            '%ident%': {get_param: 'OS::stack_name'}
+      service_instance_properties:
+        {
+          service_instance_properties_interface_list:
+              [
+                {
+                  service_instance_properties_interface_list_virtual_network: { list_join: [':', [ {get_param: domain}, {get_param: tenant}, { list_join: ['_',[{get_param: 'OS::stack_name'},{get_param: cloud_net_name}]] }]] }
+                },
+                {
+                  service_instance_properties_interface_list_virtual_network: { list_join: [':', [ {get_param: domain}, {get_param: tenant}, { list_join: ['_',[{get_param: 'OS::stack_name'},{get_param: public_net_name}]] }]] }
+                }
+              ]
+         }
+      service_template_refs: [{ get_resource: ServiceTemplate }]
+      
+
+  PortTuple:
+    type: OS::ContrailV2::PortTuple
+    depends_on: [ ServiceInstance ]
+    properties:
+      name:
+        str_replace:
+          template: "%ident%_port_tuple"
+          params:
+            '%ident%': {get_param: 'OS::stack_name'}
+      service_instance: { list_join: [':', { get_attr: [ ServiceInstance, fq_name ] } ] }
+
+  ServicePolicy:
+    type: OS::ContrailV2::NetworkPolicy
+    depends_on: [ServiceInstance, PortTuple ]
+    properties:
+      name: 
+        str_replace:
+          template: "%ident%_service_policy"
+          params:
+            '%ident%': {get_param: 'OS::stack_name'}
+      network_policy_entries: {
+        network_policy_entries_policy_rule: [{
+      network_policy_entries_policy_rule_direction: { get_param: service_policy_match_direction },
+      network_policy_entries_policy_rule_protocol: { get_param: service_policy_match_protocol },
+      network_policy_entries_policy_rule_src_ports: [{
+      network_policy_entries_policy_rule_src_ports_start_port: { get_param: service_policy_match_src_port_start },
+      network_policy_entries_policy_rule_src_ports_end_port: { get_param: service_policy_match_src_port_end }
+      }],
+    network_policy_entries_policy_rule_dst_ports: [{
+      network_policy_entries_policy_rule_dst_ports_start_port: { get_param: service_policy_match_dst_port_start },
+      network_policy_entries_policy_rule_dst_ports_end_port: { get_param: service_policy_match_dst_port_end }
+    }],
+    network_policy_entries_policy_rule_dst_addresses: [{
+      network_policy_entries_policy_rule_dst_addresses_virtual_network: { list_join: [':', [ {get_param: domain}, {get_param: tenant}, { list_join: ['_',[{get_param: 'OS::stack_name'},{get_param: cloud_net_name}]] }]] }
+    }],
+    network_policy_entries_policy_rule_src_addresses: [{
+      network_policy_entries_policy_rule_src_addresses_virtual_network: { list_join: [':', [ {get_param: domain}, {get_param: tenant}, { list_join: ['_',[{get_param: 'OS::stack_name'},{get_param: public_net_name}]] }]] }
+    }],
+    network_policy_entries_policy_rule_action_list: {
+      network_policy_entries_policy_rule_action_list_simple_action: { get_param: service_policy_action },
+      network_policy_entries_policy_rule_action_list_apply_service: [ list_join: [':', { get_attr: [ ServiceInstance, fq_name ] } ] ]
+      }
+    }]
+  }
+########
+#Static routes for SC
+  ScLeftInterfaceRoute:
+    type: OS::ContrailV2::InterfaceRouteTable
+    properties:
+      name: { list_join: ['_', [ { get_param: "OS::stack_name" }, "sc_left_route" ]]}
+      service_instance_refs: [ list_join: [':', { get_attr: [  ServiceInstance, fq_name ] } ] ]
+      service_instance_refs_data:
+        [{
+           service_instance_refs_data_interface_type: 'left'  
+        }]
+      interface_route_table_routes:
+        interface_route_table_routes_route:
+          - interface_route_table_routes_route_prefix: "0.0.0.0/1"
+          - interface_route_table_routes_route_prefix: "128.0.0.0/1"
+
+  ScRightInterfaceRoute:
+    type: OS::ContrailV2::InterfaceRouteTable
+    properties:
+      name: { list_join: ['_', [ { get_param: "OS::stack_name" }, "sc_right_route" ]]}
+      service_instance_refs: [ list_join: [':', { get_attr: [  ServiceInstance, fq_name ] } ] ]
+      service_instance_refs_data:
+        [{
+           service_instance_refs_data_interface_type: 'right'
+        }]
+      interface_route_table_routes:
+        interface_route_table_routes_route:
+          - interface_route_table_routes_route_prefix: {list_join: ['/', [ {get_param: prv_net_prefix}, {get_param: prv_net_mask}]]}
+         

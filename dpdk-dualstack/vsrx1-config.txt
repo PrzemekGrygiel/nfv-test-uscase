@@ -1,0 +1,127 @@
+#junos-config
+system {
+    root-authentication {
+        encrypted-password "$6$7W7.UKi9$QnEhOg4afjsu9kWY8oMBEmfaldRR7zMY3k3wuoMmsPAAM2VGh8y1drwkph8O0FvjcPs6a/R3IC1tR7UC4YTtK/"; ## SECRET-DATA
+    }
+    host-name vsrx1
+    services {
+        ssh;
+        web-management {
+            http {
+                interface fxp0.0;
+            }
+        }
+    }
+    syslog {
+        file messages {
+            any any;
+        }
+    }
+    license {
+        autoupdate {
+            url https://ae1.juniper.net/junos/key_retrieval;
+        }                               
+    }
+}
+security {
+    nat {
+        source {
+            rule-set rs1 {
+                from zone left;
+                to zone right;
+                rule r1 {
+                    match {
+                        source-address 0.0.0.0/0;
+                        destination-address 0.0.0.0/0;
+                    }
+                    then {
+                        source-nat {
+                            interface;
+                        }
+                    }
+                }
+            }
+        }                               
+    }
+    policies {
+        from-zone left to-zone right {
+            policy internet-access {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    permit;
+                }
+            }
+        }
+    }
+    zones {
+        security-zone left {
+            interfaces {
+                ge-0/0/0.0 {
+                    host-inbound-traffic {
+                        system-services {
+                            all;
+                        }               
+                    }
+                }
+            }
+        }
+        security-zone right {
+            interfaces {
+                ge-0/0/1.0 {
+                    host-inbound-traffic {
+                        system-services {
+                            all;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+	
+interfaces {
+    ge-0/0/0 {
+        unit 0 {
+            family inet {
+                dhcp;
+            }
+            family inet6 {
+                address 2345:2345:2345:100::4/56;
+            }
+        }
+    }
+    ge-0/0/1 {
+        unit 0 {
+            family inet {
+                dhcp;                   
+            }
+            family inet6 {
+                address 2345:2345:2345:200::4/56;
+            }
+        }
+    }
+    fxp0 {
+        unit 0 {
+            family inet {
+                address 10.87.14.151/27;
+            }
+        }
+    }
+}
+routing-options {
+    rib inet6.0 {
+        static {
+            route ::/0 next-hop 2345:2345:2345:200::1;
+            route 2345:2345:2345::/48 next-hop 2a00:2384:8104:100::1;
+        }
+    }
+    static {
+        route 0.0.0.0/0 next-hop 192.168.6.129;
+        route 192.168.0.0/16 next-hop 192.168.6.65;
+    }
+}
+

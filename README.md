@@ -11,7 +11,7 @@ Heat templates for testing NFV use-cases using vMX and vSRX
 
  ```
  tar xvf vmx-bundle-18.4R2.7.tgz 
-  cd vmx/images/
+ cd vmx/images/
  ```
 
 
@@ -19,7 +19,7 @@ Heat templates for testing NFV use-cases using vMX and vSRX
 
 ```
 openstack image create --file vFPC-20190611.img --property hw_vif_model=virtio --property hw_disk_bus=ide --property hw_cdrom_bus=ide --disk-format qcow2 --container-format bare --public vmx-vfp-huge
-openstack image create --file junos-vmx-x86-8.4R2.7.qcow2 --property hw_vif_model=virtio --property hw_disk_bus=ide --property hw_cdrom_bus=ide --disk-format qcow2 --container-format bare --public vmx-vcp-huge
+openstack image create --file junos-vmx-x86-18.4R2.7.qcow2 --property hw_vif_model=virtio --property hw_disk_bus=ide --property hw_cdrom_bus=ide --disk-format qcow2 --container-format bare --public vmx-vcp-huge
 ```
 
 
@@ -62,7 +62,18 @@ openstack flavor set --property hw:cpu_policy='dedicated' vsrx-huge
 8. Download heats and run stack deployment
 
 ```
-git clone https://github.com/PrzemekGrygiel/nfv-test.git
-cd nfv-test
+git https://github.com/PrzemekGrygiel/nfv-test-uscase.git
+cd nfv-test-uscase
+```
+There are two scenarios of the use case: 
+DPDK with IPv4 in the directory: /dpdk-ipv4
+DPDK with IPv4 and IPv6 in the directory:dpdk-dualstack
+
+In the directory /licenses there are files for vSRX and vMX licensces, please provide yours licenses there.
+
+Before run the heat creation please provide informations according to yours enviroment in vnf-test.env. Please take into account that "mgmt_net" need to be created before run and FQ Name provided as in the example.
+Once all data provided, run the stack creation.
+
+```
 openstack stack create -t vnf-test.yml -e vnf-test.env VNF-test 
 ```
